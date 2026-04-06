@@ -49,7 +49,6 @@ public class Property {
     @Column(name = "status", nullable = false, length = 25)
     private StatusEnum status;
 
-    // Link 2: Who manages this building?
     @OneToOne
     @JoinColumn(name = "manager_id")
     private AppUser manager;

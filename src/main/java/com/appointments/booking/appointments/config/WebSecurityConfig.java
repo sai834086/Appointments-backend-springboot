@@ -48,7 +48,7 @@ public class WebSecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList("https://timesetandbook.com","http://localhost:5173","http://localhost:5177"));
+        configuration.setAllowedOrigins(Arrays.asList("https://timesetandbook.com","http://localhost:5173","http://localhost:5174","https://main.d294nkamhkambc.amplifyapp.com"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT","PATCH","DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type"));
         configuration.setAllowCredentials(true);

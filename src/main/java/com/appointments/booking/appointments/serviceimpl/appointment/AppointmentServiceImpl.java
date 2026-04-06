@@ -14,6 +14,7 @@ import com.appointments.booking.appointments.model.patner.Services;
 import com.appointments.booking.appointments.model.appuser.AppUser;
 import com.appointments.booking.appointments.payload.request.appointments.AppointmentRequest;
 import com.appointments.booking.appointments.payload.request.appointments.RescheduleRequest;
+import com.appointments.booking.appointments.payload.response.appointments.GetAppointmentsWithPropertyID;
 import com.appointments.booking.appointments.repository.appointments.AppointmentRepository;
 import com.appointments.booking.appointments.repository.patner.AvailabilityRepository;
 import com.appointments.booking.appointments.repository.patner.EmployeeRepository;
@@ -27,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.List;
 
 @AllArgsConstructor
 @Service
@@ -145,6 +147,11 @@ public class AppointmentServiceImpl implements AppointmentService {
         appointment.setUpdatedAt(LocalDateTime.now());
 
         appointmentRepository.save(appointment);
+    }
+
+    @Override
+    public List<GetAppointmentsWithPropertyID> getAppointments(Long propertyId, LocalDate date) {
+        return appointmentRepository.findAllAppointmentsWithPropertyIdAndDate(propertyId,date.toString());
     }
 
     private void validateAppointment(Long employeeId, LocalDate date, LocalTime startTime, LocalTime endTime) {
