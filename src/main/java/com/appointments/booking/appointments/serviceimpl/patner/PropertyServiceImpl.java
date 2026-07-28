@@ -51,6 +51,7 @@ public class PropertyServiceImpl implements PropertyService {
     private final MailService mailService;
 
     private final PartnerUserRepository partnerUserRepository;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @Autowired
     public PropertyServiceImpl(PropertyRepository propertyRepository,
@@ -58,7 +59,8 @@ public class PropertyServiceImpl implements PropertyService {
                                AppUserRepository appUserRepository,
                                PasswordEncoder passwordEncoder,
                                RoleRepository roleRepository, PartnerUserRepository partnerUserRepository,
-                               MailService mailService) {
+                               MailService mailService,
+                               org.springframework.context.ApplicationEventPublisher eventPublisher) {
         this.propertyRepository = propertyRepository;
         this.propertyMapStruct = propertyMapStruct;
         this.appUserRepository = appUserRepository;
@@ -66,6 +68,22 @@ public class PropertyServiceImpl implements PropertyService {
         this.roleRepository = roleRepository;
         this.partnerUserRepository = partnerUserRepository;
         this.mailService = mailService;
+        this.eventPublisher = eventPublisher;
+    }
+
+    /** Emit a MANAGER_CHANGED entry for the partner who owns {@code property}. */
+    private void publishManagerChanged(Property property, String title, String message) {
+        eventPublisher.publishEvent(
+                com.appointments.booking.appointments.event.PartnerNotificationEvent.builder()
+                        .partnerId(property.getPartnerUser() != null
+                                ? property.getPartnerUser().getPartnerId() : null)
+                        .type(com.appointments.booking.appointments.model.notification
+                                .PartnerNotificationType.MANAGER_CHANGED)
+                        .title(title)
+                        .message(message)
+                        .referenceId(String.valueOf(property.getPropertyId()))
+                        .link("/partner/property")
+                        .build());
     }
 
     // ----------------------------------------------------------------
@@ -189,9 +207,32 @@ public class PropertyServiceImpl implements PropertyService {
             }
         }
 
+        String previousName = existingProperty.getPropertyName();
+
         // Update fields and save
         propertyMapStruct.updateEntityFromDto(dto, existingProperty);
         Property savedProperty = propertyRepository.save(existingProperty);
+
+        // Call out a rename explicitly — it's the change most worth spotting
+        // in the feed; anything else is reported generically.
+        boolean renamed = previousName != null
+                && !previousName.equals(savedProperty.getPropertyName());
+
+        eventPublisher.publishEvent(
+                com.appointments.booking.appointments.event.PartnerNotificationEvent.builder()
+                        .partnerId(savedProperty.getPartnerUser() != null
+                                ? savedProperty.getPartnerUser().getPartnerId() : null)
+                        .type(com.appointments.booking.appointments.model.notification
+                                .PartnerNotificationType.PROPERTY_UPDATED)
+                        .title("Property updated")
+                        .message(renamed
+                                ? previousName + " was renamed to "
+                                        + savedProperty.getPropertyName() + "."
+                                : savedProperty.getPropertyName()
+                                        + " details were updated.")
+                        .referenceId(String.valueOf(savedProperty.getPropertyId()))
+                        .link("/partner/property")
+                        .build());
 
         PropertyDetailsResponse response = propertyMapStruct.toResponse(savedProperty);
         response.setManager(buildManagerResponse(savedProperty.getManager(), userId));
@@ -274,6 +315,11 @@ public class PropertyServiceImpl implements PropertyService {
 
         sendManagerInvite(property, manager);
 
+        publishManagerChanged(property,
+                "Manager assigned",
+                manager.getFirstName() + " " + manager.getLastName()
+                        + " now manages " + property.getPropertyName() + ".");
+
         ManagerDetailsResponse response = new ManagerDetailsResponse();
         response.setUserId(manager.getUserId());
         response.setFirstName(manager.getFirstName());
@@ -351,6 +397,11 @@ public class PropertyServiceImpl implements PropertyService {
 
         property.setManager(null);
         propertyRepository.save(property);
+
+        publishManagerChanged(property,
+                "Manager removed",
+                currentManager.getFirstName() + " " + currentManager.getLastName()
+                        + " is no longer managing " + property.getPropertyName() + ".");
 
         // Removing a manager also removes their user account — but only
         // when it's safe: they must not manage any other property, and the
@@ -434,6 +485,11 @@ public class PropertyServiceImpl implements PropertyService {
         propertyRepository.save(property);
 
         sendManagerInvite(property, manager);
+
+        publishManagerChanged(property,
+                "Manager assigned",
+                manager.getFirstName() + " " + manager.getLastName()
+                        + " now manages " + property.getPropertyName() + ".");
 
         ManagerDetailsResponse response = new ManagerDetailsResponse();
         response.setUserId(manager.getUserId());

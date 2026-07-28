@@ -41,6 +41,7 @@ public class AppUserDataFetchServiceImpl implements AppUserDataFetchService {
     private final AvailabilityGenerator availabilityGenerator;
     private final AppointmentRepository appointmentRepository;
     private final NotificationService notificationService;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @Autowired
     public AppUserDataFetchServiceImpl(PartnerUserRepository partnerUserRepository,
@@ -54,7 +55,8 @@ public class AppUserDataFetchServiceImpl implements AppUserDataFetchService {
                                        ServicesMapStruct servicesMapStruct,
                                        AvailabilityGenerator availabilityGenerator,
                                        AppointmentRepository appointmentRepository,
-                                       NotificationService notificationService) {
+                                       NotificationService notificationService,
+                                       org.springframework.context.ApplicationEventPublisher eventPublisher) {
         this.partnerUserRepository = partnerUserRepository;
         this.partnerUserMapStruct = partnerUserMapStruct;
         this.propertyRepository = propertyRepository;
@@ -67,6 +69,7 @@ public class AppUserDataFetchServiceImpl implements AppUserDataFetchService {
         this.availabilityGenerator = availabilityGenerator;
         this.appointmentRepository = appointmentRepository;
         this.notificationService = notificationService;
+        this.eventPublisher = eventPublisher;
     }
 
     // 1. FETCH ALL PARTNERS (Filters by Location) — includes property and service counts for card display
@@ -270,6 +273,25 @@ public class AppUserDataFetchServiceImpl implements AppUserDataFetchService {
                 com.appointments.booking.appointments.model.notification.NotificationType.BOOKING_CANCELLED,
                 appointment.getConfirmationNumber()
         );
+
+        // Let the owning partner know the slot has freed up.
+        Long partnerId = appointment.getProperty() != null
+                && appointment.getProperty().getPartnerUser() != null
+                ? appointment.getProperty().getPartnerUser().getPartnerId()
+                : null;
+
+        eventPublisher.publishEvent(
+                com.appointments.booking.appointments.event.PartnerNotificationEvent.builder()
+                        .partnerId(partnerId)
+                        .type(com.appointments.booking.appointments.model.notification
+                                .PartnerNotificationType.APPOINTMENT_CANCELLED)
+                        .title("Appointment cancelled")
+                        .message(appointment.getCustomer().getFirstName() + " cancelled "
+                                + appointment.getServices().getServiceName() + " on "
+                                + appointment.getAppointmentDate() + ".")
+                        .referenceId(appointment.getConfirmationNumber())
+                        .link("/partner/appointments")
+                        .build());
     }
 
     // HELPER: Map to DTO

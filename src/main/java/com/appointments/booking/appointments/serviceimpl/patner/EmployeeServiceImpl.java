@@ -38,18 +38,21 @@ public class EmployeeServiceImpl implements EmployeeService {
     private final PropertyRepository propertyRepository;
     private final AvailabilityRepository availabilityRepository;
     private final ServicesRepository servicesRepository;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @Autowired
     public EmployeeServiceImpl(EmployeeRepository employeeRepository,
                                EmployeeMapStruct employeeMapStruct,
                                PropertyRepository propertyRepository,
                                AvailabilityRepository availabilityRepository,
-                               ServicesRepository servicesRepository) {
+                               ServicesRepository servicesRepository,
+                               org.springframework.context.ApplicationEventPublisher eventPublisher) {
         this.employeeRepository = employeeRepository;
         this.employeeMapStruct = employeeMapStruct;
         this.propertyRepository = propertyRepository;
         this.availabilityRepository = availabilityRepository;
         this.servicesRepository = servicesRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     // ----------------------------------------------------------------
@@ -96,6 +99,19 @@ public class EmployeeServiceImpl implements EmployeeService {
                 .collect(Collectors.toList());
 
         availabilityRepository.saveAll(defaultAvailabilities);
+
+        eventPublisher.publishEvent(
+                com.appointments.booking.appointments.event.PartnerNotificationEvent.builder()
+                        .partnerId(property.getPartnerUser() != null
+                                ? property.getPartnerUser().getPartnerId() : null)
+                        .type(com.appointments.booking.appointments.model.notification
+                                .PartnerNotificationType.EMPLOYEE_ADDED)
+                        .title("Employee added")
+                        .message(employeeFullNameFromDTO.trim() + " was added to "
+                                + property.getPropertyName() + ".")
+                        .referenceId(String.valueOf(property.getPropertyId()))
+                        .link("/partner/property")
+                        .build());
     }
 
     // ----------------------------------------------------------------

@@ -22,9 +22,12 @@ import com.appointments.booking.appointments.repository.patner.PropertyRepositor
 import com.appointments.booking.appointments.repository.patner.ServicesRepository;
 import com.appointments.booking.appointments.repository.user.AppUserRepository;
 import com.appointments.booking.appointments.model.notification.NotificationType;
+import com.appointments.booking.appointments.model.notification.PartnerNotificationType;
+import com.appointments.booking.appointments.event.PartnerNotificationEvent;
 import com.appointments.booking.appointments.service.appointment.AppointmentService;
 import com.appointments.booking.appointments.service.notification.NotificationService;
 import lombok.AllArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,6 +47,14 @@ public class AppointmentServiceImpl implements AppointmentService {
     private final AppUserRepository appUserRepository;
     private final NotificationService notificationService;
     private final PropertyRepository propertyRepository;
+    private final ApplicationEventPublisher eventPublisher;
+
+    /** Owning partner of a property, or null when the graph isn't loaded. */
+    private Long partnerIdOf(com.appointments.booking.appointments.model.patner.Property property) {
+        return property != null && property.getPartnerUser() != null
+                ? property.getPartnerUser().getPartnerId()
+                : null;
+    }
 
     @Override
     @Transactional
@@ -91,6 +102,19 @@ public class AppointmentServiceImpl implements AppointmentService {
                 NotificationType.BOOKING_CONFIRMED,
                 savedAppointment.getConfirmationNumber()
         );
+
+        // Notify the partner who owns the property. Published as an event so
+        // the booking transaction doesn't depend on the notification write.
+        eventPublisher.publishEvent(PartnerNotificationEvent.builder()
+                .partnerId(partnerIdOf(employee.getProperty()))
+                .type(PartnerNotificationType.APPOINTMENT_BOOKED)
+                .title("New appointment booked")
+                .message(appUser.getFirstName() + " booked " + service.getServiceName()
+                        + " at " + employee.getProperty().getPropertyName()
+                        + " on " + request.getDate() + " at " + startTime + ".")
+                .referenceId(savedAppointment.getConfirmationNumber())
+                .link("/partner/appointments")
+                .build());
 
         return savedAppointment.getConfirmationNumber();
     }

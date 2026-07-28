@@ -5,6 +5,7 @@ import com.appointments.booking.appointments.mapStruct.patner.AvailabilityMapStr
 import com.appointments.booking.appointments.model.enums.AvailabileEnum;
 import com.appointments.booking.appointments.model.patner.Availability;
 import com.appointments.booking.appointments.model.patner.Employee;
+import com.appointments.booking.appointments.model.patner.Property;
 import com.appointments.booking.appointments.payload.request.patner.availabilityRequests.AvailabilityUpdateRequest;
 import com.appointments.booking.appointments.payload.response.patner.availabilityResponse.AvailabilityResponseWithOffTime;
 import com.appointments.booking.appointments.payload.response.patner.availabilityResponse.EmployeeWeeklySummaryResponse;
@@ -28,16 +29,19 @@ public class AvailabilityServiceImpl implements AvailabilityService {
     private final AvailabilityMapStruct availabilityMapStruct;
     private final StatusUpdateService statusUpdateService;
     private final EmployeeRepository employeeRepository;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @Autowired
     public AvailabilityServiceImpl(AvailabilityRepository availabilityRepository,
                                    AvailabilityMapStruct availabilityMapStruct,
                                    StatusUpdateService statusUpdateService,
-                                   EmployeeRepository employeeRepository) {
+                                   EmployeeRepository employeeRepository,
+                                   org.springframework.context.ApplicationEventPublisher eventPublisher) {
         this.availabilityRepository = availabilityRepository;
         this.availabilityMapStruct = availabilityMapStruct;
         this.statusUpdateService = statusUpdateService;
         this.employeeRepository = employeeRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -53,6 +57,24 @@ public class AvailabilityServiceImpl implements AvailabilityService {
 
         // Notify status service using the AppUser ID
         statusUpdateService.updateStatuses(userId);
+
+        Employee employee = existing.getEmployee();
+        Property property = employee != null ? employee.getProperty() : null;
+        if (property != null) {
+            eventPublisher.publishEvent(
+                    com.appointments.booking.appointments.event.PartnerNotificationEvent.builder()
+                            .partnerId(property.getPartnerUser() != null
+                                    ? property.getPartnerUser().getPartnerId() : null)
+                            .type(com.appointments.booking.appointments.model.notification
+                                    .PartnerNotificationType.EMPLOYEE_AVAILABILITY_UPDATED)
+                            .title("Employee availability updated")
+                            .message(employee.getFirstName() + " updated their "
+                                    + existing.getDay() + " hours at "
+                                    + property.getPropertyName() + ".")
+                            .referenceId(String.valueOf(property.getPropertyId()))
+                            .link("/partner/property")
+                            .build());
+        }
     }
 
     @Override

@@ -11,8 +11,11 @@ import com.appointments.booking.appointments.repository.patner.EmployeeRepositor
 import com.appointments.booking.appointments.repository.patner.PartnerUserRepository;
 import com.appointments.booking.appointments.repository.patner.PropertyRepository;
 import com.appointments.booking.appointments.repository.patner.ServicesRepository;
+import com.appointments.booking.appointments.event.PartnerNotificationEvent;
+import com.appointments.booking.appointments.model.notification.PartnerNotificationType;
 import com.appointments.booking.appointments.service.patner.StatusUpdateService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,18 +29,21 @@ public class StatusUpdateServiceImpl implements StatusUpdateService {
     private final PropertyRepository propertyRepository;
     private final PartnerUserRepository partnerUserRepository;
     private final ServicesRepository servicesRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Autowired
     public StatusUpdateServiceImpl(AvailabilityRepository availabilityRepository,
                                    EmployeeRepository employeeRepository,
                                    PropertyRepository propertyRepository,
                                    PartnerUserRepository partnerUserRepository,
-                                   ServicesRepository servicesRepository) {
+                                   ServicesRepository servicesRepository,
+                                   ApplicationEventPublisher eventPublisher) {
         this.availabilityRepository = availabilityRepository;
         this.employeeRepository = employeeRepository;
         this.propertyRepository = propertyRepository;
         this.partnerUserRepository = partnerUserRepository;
         this.servicesRepository = servicesRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -77,7 +83,27 @@ public class StatusUpdateServiceImpl implements StatusUpdateService {
                     .anyMatch(e -> StatusEnum.ACTIVE.equals(e.getStatus()));
 
             StatusEnum newStatus = propertyHasActiveStaff ? StatusEnum.ACTIVE : StatusEnum.INACTIVE;
+            StatusEnum previousStatus = property.getStatus();
             property.setStatus(newStatus);
+
+            // Only notify on an actual transition — this method runs on every
+            // dashboard load, so notifying unconditionally would spam the feed.
+            if (previousStatus != null && !previousStatus.equals(newStatus)) {
+                eventPublisher.publishEvent(PartnerNotificationEvent.builder()
+                        .partnerId(property.getPartnerUser() != null
+                                ? property.getPartnerUser().getPartnerId() : null)
+                        .type(PartnerNotificationType.PROPERTY_STATUS_CHANGED)
+                        .title(newStatus == StatusEnum.ACTIVE
+                                ? "Property went live"
+                                : "Property is no longer active")
+                        .message(newStatus == StatusEnum.ACTIVE
+                                ? property.getPropertyName() + " is now active and accepting bookings."
+                                : property.getPropertyName()
+                                        + " went inactive — it has no active employees.")
+                        .referenceId(String.valueOf(property.getPropertyId()))
+                        .link("/partner/property")
+                        .build());
+            }
 
             if (newStatus == StatusEnum.ACTIVE) {
                 hasAnyActiveProperty = true;
